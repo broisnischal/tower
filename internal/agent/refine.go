@@ -1,9 +1,13 @@
 package agent
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -55,31 +59,58 @@ func Refine(text string, a *Agent, model string) (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "claude", "-p", "--model", model, "--tools", "",
 		"--strict-mcp-config", "--setting-sources", "", "--no-session-persistence",
-		"--system-prompt", refineSystem)
+		"--output-format", "stream-json", "--verbose", "--system-prompt", refineSystem)
 	cmd.Stdin = strings.NewReader(refineInput(body, a))
 	cmd.Env = refineEnv()
 	if a != nil && a.Cwd != "" {
 		cmd.Dir = a.Cwd
 	}
-	out, err := cmd.Output()
-	if ctx.Err() != nil {
-		return "", errors.New("rewrite timed out")
-	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.StdoutPipe()
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
-			return "", fmt.Errorf("rewrite failed: %s", clip(strings.TrimSpace(string(ee.Stderr)), 120))
-		}
-		if len(out) > 0 { // claude -p prints its errors on stdout
-			return "", fmt.Errorf("rewrite failed: %s", clip(strings.TrimSpace(string(out)), 120))
-		}
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
 		return "", fmt.Errorf("rewrite failed: %v", err)
 	}
-	refined := cleanRefined(string(out))
+	// The result event comes about 1.3s before claude exits, so read it off
+	// the stream and stop the process instead of waiting for its shutdown.
+	res, found := streamResult(out)
+	cmd.Process.Kill()
+	cmd.Wait()
+	switch {
+	case ctx.Err() != nil:
+		return "", errors.New("rewrite timed out")
+	case !found:
+		return "", fmt.Errorf("rewrite failed: %s", clip(or(strings.TrimSpace(stderr.String()), "claude printed no result"), 120))
+	case res.IsError:
+		return "", fmt.Errorf("rewrite failed: %s", clip(res.Result, 120))
+	}
+	refined := cleanRefined(res.Result)
 	if refined == "" {
 		return "", errors.New("rewrite came back empty")
 	}
 	return mentions + keepAttachments(body, refined), nil
+}
+
+type streamEvent struct {
+	Type    string `json:"type"`
+	Result  string `json:"result"`
+	IsError bool   `json:"is_error"`
+}
+
+// streamResult reads claude's stream-json output up to its result event.
+func streamResult(r io.Reader) (streamEvent, bool) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64<<10), 8<<20)
+	for sc.Scan() {
+		var e streamEvent
+		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Type == "result" {
+			return e, true
+		}
+	}
+	return streamEvent{}, false
 }
 
 // refineInput is the message plus what the agent is in the middle of.
