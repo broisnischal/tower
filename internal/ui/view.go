@@ -379,8 +379,8 @@ func (m *model) detailPanel(w, h int) []string {
 		body = m.window(trimBlank(strings.Split(m.screen, "\n")), bodyH, true)
 	case viewLog:
 		body = m.window(logLines(agent.Tail(a.SessionID, 500), false), bodyH, true)
-	case viewDiff:
-		body = m.window(strings.Split(m.cached(viewDiff, a.Pane), "\n"), bodyH, false)
+	case viewDiff, viewBranches:
+		body = m.window(strings.Split(m.cached(m.view, a.Pane), "\n"), bodyH, false)
 	case viewLive:
 		var lines []string
 		if f := m.feeds[a.Transcript]; f != nil {
@@ -459,10 +459,15 @@ func (m *model) threadPanel(t *thread.Thread, w, h int) []string {
 		info = append(info, note)
 	}
 	on, off := accent.Bold(true).Underline(true), dim
-	tabs := on.Render(" chat ") + off.Render(" diff ") + dim.Render("  tab switches")
-	if m.view == viewDiff {
-		tabs = off.Render(" chat ") + on.Render(" diff ") + dim.Render("  tab switches")
+	tabs := ""
+	for _, v := range []view{viewLive, viewDiff, viewBranches} {
+		st := off
+		if v == m.view || v == viewLive && !topAnchored(m.view) {
+			st = on
+		}
+		tabs += st.Render(" " + map[view]string{viewLive: "chat", viewDiff: "diff", viewBranches: "branches"}[v] + " ")
 	}
+	tabs += dim.Render("  tab switches")
 	head := []string{agentIcon(t.Engine, t.Status, m.frame) + " " + bold.Render(t.Name) + "  " + dim.Render(strings.Join(info, " · ")), tabs}
 
 	compH := 3
@@ -478,8 +483,8 @@ func (m *model) threadPanel(t *thread.Thread, w, h int) []string {
 
 	bodyH := max(0, h-len(head)-len(comp))
 	var body []string
-	if m.view == viewDiff {
-		body = m.window(strings.Split(m.cached(viewDiff, "t"+t.ID), "\n"), bodyH, false)
+	if topAnchored(m.view) {
+		body = m.window(strings.Split(m.cached(m.view, "t"+t.ID), "\n"), bodyH, false)
 	} else {
 		var lines []string
 		if c := m.chats[t.ID]; c != nil {
@@ -629,7 +634,7 @@ func (m *model) footer(w int) []string {
 	}
 	l := dim.Render(" click/⏎ go  1-9 jump  v grid  tab view  s send  D assign  m comms  f forward  b all  n new  N headless  y approve  x esc  ? keys  q quit")
 	if m.selThread() != nil {
-		l = dim.Render(" i type  y allow  A always  d deny  x stop  X remove  r rename  tab chat/diff  1-9 jump  N new headless  v grid  ? keys  q quit")
+		l = dim.Render(" i type  y allow  A always  d deny  x stop  X remove  r rename  tab chat/diff/branches  1-9 jump  N new headless  v grid  ? keys  q quit")
 	}
 	if m.grid {
 		l = dim.Render(" ⏎ jump  hjkl move  v list  s send  f forward  b all  n new  y approve  x esc  a next  ? keys  q quit")
@@ -878,7 +883,7 @@ var keyHelp = [][2]string{
 	{"i", "headless thread: type to it (esc back to the list)"},
 	{"y / A / d", "headless thread: allow / allow for the session / deny"},
 	{"r", "rename"},
-	{"tab", "dashboard view: screen, log, diff, reply (chat, diff for threads)"},
+	{"tab", "dashboard view: live, screen, diff, log, branches (chat, diff, branches for threads)"},
 	{"pgup pgdn", "scroll the view; in the sidebar, the log panel (wheel too)"},
 	{"l / c", "sidebar log panel / compact rows"},
 	{"o", "sidebar: open the dashboard"},

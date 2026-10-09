@@ -26,13 +26,17 @@ import (
 type view int
 
 const (
-	viewLive   view = iota // what the agent is doing, from its transcript
-	viewScreen             // its terminal
-	viewDiff               // git diff of its folder
-	viewLog                // tower's activity log
+	viewLive     view = iota // what the agent is doing, from its transcript
+	viewScreen               // its terminal
+	viewDiff                 // git diff of its folder
+	viewLog                  // tower's activity log
+	viewBranches             // every branch of its repo, and where each stands
 )
 
-var viewNames = []string{"live", "screen", "diff", "log"}
+var viewNames = []string{"live", "screen", "diff", "log", "branches"}
+
+// topAnchored views read from the top; the rest follow their newest line.
+func topAnchored(v view) bool { return v == viewDiff || v == viewBranches }
 
 // liveFeed follows one Claude Code transcript as a chat.
 type liveFeed struct {
@@ -711,9 +715,9 @@ func (m *model) onKey(k tea.KeyMsg) tea.Cmd {
 			tmux.Run("last-pane", "-t", m.self)
 			return nil
 		}
-		return m.setView((m.view + 1) % 4)
+		return m.setView((m.view + 1) % view(len(viewNames)))
 	case "shift+tab":
-		return m.setView((m.view + 3) % 4)
+		return m.setView((m.view + view(len(viewNames)) - 1) % view(len(viewNames)))
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		if n := int(k.String()[0] - '1'); n < len(m.byNum) {
 			m.move(m.byNum[n] - m.cur)
@@ -920,7 +924,7 @@ func (m *model) setView(v view) tea.Cmd {
 func (m *model) scroll(d int) {
 	top := m.dcur + d
 	last := max(0, m.dlen-m.dh)
-	if top >= last && m.view != viewDiff {
+	if top >= last && !topAnchored(m.view) {
 		m.dtop = -1 // back to following the bottom
 		return
 	}
@@ -1239,8 +1243,12 @@ func detailKey(v view, pane string) string { return strconv.Itoa(int(v)) + pane 
 
 // detailCmd loads the diff or reply view in the background.
 func (m *model) detailCmd() tea.Cmd {
-	if t := m.selThread(); t != nil && !m.sidebar && !m.grid && m.view == viewDiff {
-		key, dir := detailKey(viewDiff, "t"+t.ID), t.Cwd
+	if t := m.selThread(); t != nil && !m.sidebar && !m.grid && (m.view == viewDiff || m.view == viewBranches) {
+		key, dir, name, v := detailKey(m.view, "t"+t.ID), t.Cwd, t.Name, m.view
+		if v == viewBranches {
+			who := m.workers()
+			return func() tea.Msg { return detailMsg{key, branchView(dir, name, who)} }
+		}
 		return func() tea.Msg { return detailMsg{key, gitDiff(dir)} }
 	}
 	a := m.selAgent()
@@ -1252,6 +1260,9 @@ func (m *model) detailCmd() tea.Cmd {
 	case viewDiff:
 		dir := a.Cwd
 		return func() tea.Msg { return detailMsg{key, gitDiff(dir)} }
+	case viewBranches:
+		dir, name, who := a.Cwd, a.Name, m.workers()
+		return func() tea.Msg { return detailMsg{key, branchView(dir, name, who)} }
 	}
 	return nil
 }
