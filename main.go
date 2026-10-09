@@ -49,6 +49,8 @@ const help = `tower: control plane for Claude Code agents in tmux
   tower stop <agent>             interrupt the agent's turn (sends Esc)
   tower kill <agent>             close the agent's pane
   tower whoami                   print the calling agent
+  tower branches [--json] [--fetch] [dir...]   every branch of the repos my agents work in:
+                                 worktree, agent, vs the base branch, pushed, uncommitted
 
 <agent> is a name, a pane id (%3), an index from tower ls, or a tmux target;
 send, wait, last, stop and kill also take a thread name, id, or t<index>.
@@ -154,6 +156,8 @@ func run(cmd string, args []string) error {
 		return nil
 	case "ls", "list":
 		return list(args)
+	case "branches":
+		return branches(args)
 	case "spawn":
 		return spawn(args)
 	case "send":
