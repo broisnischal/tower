@@ -24,6 +24,14 @@ itself. It gives me:
 - an **input bar** along the bottom of every window that writes to the agent
   in it: several lines, history, voice typing through voxtype, pasted images,
   videos (sent as still frames) and dropped files
+- **prompt rewriting** in the input bar: a quick Claude run (Haiku by
+  default) turns what I typed or dictated into a clear, complete prompt for
+  the agent, using its current task and last reply to work out what "it" and
+  "that" mean. Enter puts the rewrite in the box and enter again sends it;
+  `ctrl+z` brings back my own words, `ctrl+o` rewrites on demand. Short
+  replies, slash commands and `!` commands go as typed.
+  `set -g @tower_refine auto` sends the rewrite straight away, `off` turns it
+  off, and `@tower_refine_model` picks the model
 - **auto retry** when a turn dies on an API or network error: tower waits
   5s, 10s, 20s ... (doubling, up to 5 minutes, 8 tries) and says "continue";
   a usage limit waits until it resets; a login or billing error is shown to me
@@ -137,6 +145,8 @@ pane resizes the window and a resize makes Claude Code repaint everything.
 | `b` | send to every agent |
 | `ctrl+v` | while typing: attach the clipboard image, video or copied files |
 | `ctrl+r` | while typing: start or stop voice typing (voxtype) |
+| `ctrl+o` | input bar: rewrite the message into a full prompt |
+| `ctrl+z` | input bar: back to my own words after a rewrite |
 | `y` | approve the permission prompt the agent is waiting on |
 | `x` / `X` | interrupt (Esc) / close the pane |
 | `n` | new agent in a tmux window: name, task, optional worktree |
@@ -184,6 +194,7 @@ from `tower ls`, or any tmux target.
 | `internal/agent/state.go` | state files, `Load`, cleanup, window icons |
 | `internal/agent/transcript.go` | token usage, last reply, interrupt detection |
 | `internal/agent/control.go` | resolve, send, spawn, wait, worktrees |
+| `internal/agent/refine.go` | rewrites input bar messages into full prompts |
 | `internal/sidebar` | docked panes per window (sidebar, input bar), shown and hidden together |
 | `internal/thread` | daemon, socket protocol, event model, Claude Code and Codex engines |
 | `internal/ui` | Bubble Tea: dashboard, sidebar, grid, chat, input bar, composer |

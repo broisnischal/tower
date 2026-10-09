@@ -12,6 +12,9 @@
 #   @tower_input_height (5) input bar height in lines
 #   @tower_claude  (claude) command new agents start with
 #   @tower_notify     (on)  flash a message when a hidden agent needs me
+#   @tower_refine (review)  input bar rewrites my message into a full prompt:
+#                           review (enter rewrites, enter again sends), auto, off
+#   @tower_refine_model (haiku)  model for the rewrite
 # It defines two formats to drop into my own status line:
 #   #{E:@tower_icon}    agent state icon for a window-status format
 #   #{E:@tower_status}  agent counts for status-right

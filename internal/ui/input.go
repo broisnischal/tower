@@ -29,11 +29,24 @@ type inputBar struct {
 	spinning bool
 	flash    string
 	flashAt  time.Time
+	refine   string // @tower_refine: review, auto or off
+	refining bool
+	rseq     int    // a rewrite that comes back after I moved on is dropped
+	mine     string // my own words while the box holds a rewrite of them
+	asTyped  bool   // enter sends the box as it is, without a rewrite
 }
 
 type sentMsg struct {
 	note string
 	err  error
+}
+
+type refinedMsg struct {
+	seq  int
+	from string // the box when the rewrite started
+	text string
+	err  error
+	send bool // auto mode: send it once it is back
 }
 
 // Input runs the input bar.
@@ -50,6 +63,7 @@ func Compose(target string) error {
 
 func runInput(b *inputBar) error {
 	b.c = newComposer("message the agent here (@name or @all to send elsewhere)")
+	b.refine = refineMode()
 	b.refresh()
 	return run(b, tea.WithAltScreen(), tea.WithFPS(30))
 }
@@ -166,10 +180,34 @@ func (b *inputBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return b, nil
 		}
 		b.c.Reset()
+		b.mine, b.asTyped = "", false
 		if b.popup {
 			return b, tea.Quit
 		}
 		b.flash, b.flashAt = msg.note, time.Now()
+		return b, nil
+	case refinedMsg:
+		if msg.seq != b.rseq || !b.refining {
+			return b, nil
+		}
+		b.refining, b.c.busy = false, ""
+		if msg.err != nil {
+			b.asTyped = true
+			b.flash, b.flashAt = msg.err.Error()+" · enter sends it as typed", time.Now()
+			return b, nil
+		}
+		if b.c.ta.Value() != msg.from {
+			b.flash, b.flashAt = "the message changed during the rewrite · ctrl+o rewrites it again", time.Now()
+			return b, nil
+		}
+		if b.mine == "" {
+			b.mine = msg.from
+		}
+		b.asTyped = false
+		b.c.ta.SetValue(msg.text)
+		if msg.send {
+			return b, b.send()
+		}
 		return b, nil
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -190,14 +228,67 @@ func (b *inputBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return b, tea.Quit
 			}
 			b.c.Reset()
+			b.refining, b.c.busy, b.mine, b.asTyped = false, "", "", false
+			return b, nil
+		case "ctrl+o":
+			if b.refining || b.c.Empty() {
+				return b, nil
+			}
+			return b, b.rewrite(false)
+		case "ctrl+z":
+			if b.mine != "" {
+				b.c.ta.SetValue(b.mine)
+				b.mine, b.asTyped = "", true
+			}
 			return b, nil
 		}
 	}
 	submit, cmd := b.c.Update(msg)
-	if submit && !b.c.Empty() {
+	if b.c.Empty() {
+		b.mine, b.asTyped = "", false
+	}
+	if submit && !b.c.Empty() && !b.refining {
+		b.refine = refineMode()
+		if b.refine != "off" && b.mine == "" && !b.asTyped && agent.NeedsRefine(b.c.ta.Value()) {
+			return b, b.rewrite(b.refine == "auto")
+		}
 		return b, b.send()
 	}
 	return b, cmd
+}
+
+// refineMode is @tower_refine: review (enter rewrites the message into the
+// box, enter again sends it), auto (enter rewrites and sends) or off.
+func refineMode() string {
+	switch m := tmux.Option("@tower_refine", "review"); m {
+	case "auto", "off":
+		return m
+	}
+	return "review"
+}
+
+// rewrite turns the message into a fuller prompt for the agent it goes to.
+// Asked again, it starts over from my own words, not from the last rewrite.
+func (b *inputBar) rewrite(send bool) tea.Cmd {
+	from := b.c.ta.Value()
+	src := or(b.mine, from)
+	var def *agent.Agent
+	if a := b.find(b.target); a != nil {
+		c := *a
+		def = &c
+	}
+	agents := append([]agent.Agent(nil), b.agents...)
+	b.rseq++
+	seq := b.rseq
+	b.refining, b.c.busy = true, "rewriting the prompt"
+	return func() tea.Msg {
+		ctx := def
+		if to, _, err := agent.Route(src, nil, agents); err == nil && len(to) == 1 {
+			ctx = &to[0]
+		}
+		text, err := agent.Refine(src, ctx, tmux.Option("@tower_refine_model", "haiku"))
+		return refinedMsg{seq: seq, from: from, text: text, err: err, send: send}
+	}
 }
 
 func (b *inputBar) send() tea.Cmd {
@@ -252,11 +343,18 @@ func (b *inputBar) View() string {
 	top := rule(b.w, label, dim.Render(" tab: next agent "))
 	box := b.c.View(b.w, max(1, b.h-2))
 	status := b.c.Status()
+	if b.mine != "" {
+		status = strings.TrimSpace(status + " " + accent.Render("✦ rewritten") + dim.Render(" · enter send · ctrl+z my words · ctrl+o again"))
+	}
 	if b.flash != "" && time.Since(b.flashAt) < 5*time.Second {
 		status = strings.TrimSpace(status + " " + accent.Render(b.flash))
 	}
 	if status == "" {
-		status = dim.Render("enter send · alt+enter new line · ctrl+v paste image/video/files · ctrl+r voice · ↑ history · esc back")
+		enter := map[string]string{"review": "enter rewrite, again to send", "auto": "enter rewrite and send"}[b.refine]
+		if b.asTyped {
+			enter = "enter send as typed"
+		}
+		status = dim.Render(or(enter, "enter send") + " · alt+enter new line · ctrl+o rewrite · ctrl+v paste image/video/files · ctrl+r voice · ↑ history · esc back")
 	}
 	return strings.Join([]string{top, box, fit(" "+status, b.w)}, "\n")
 }
