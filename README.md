@@ -94,9 +94,22 @@ codex app-server (JSON-RPC) ────────────┘        │
   thread, so a thread resumes after a restart with `--resume` or
   `thread/resume`.
 
+## Requirements
+
+- Linux, tmux (3.7+ for the synchronized output below) and Claude Code
+  (`claude` on `$PATH`): its hooks feed tower, and headless threads and prompt
+  rewriting run it
+- Go 1.26 to build, and `jq` for `make hooks`
+- optional, each for one feature: `codex` (headless Codex threads), `git`
+  (worktrees), `wl-paste` from wl-clipboard (pasting images and files),
+  `ffmpeg` and `ffprobe` (video frames), `voxtype` (voice typing), and Chrome,
+  Chromium or Brave (`tower browse`)
+
 ## Install
 
 ```sh
+git clone https://github.com/broisnischal/tower ~/tower
+cd ~/tower
 make install   # builds bin/tower, links it to ~/.local/bin/tower
 make hooks     # registers the hook in ~/.claude/settings.json (backup kept)
 make skill     # links skill/ to ~/.claude/skills/tower so agents know the CLI
@@ -121,6 +134,15 @@ set-environment -g CLAUDE_CODE_NO_FLICKER 1
 
 Each window gets its own sidebar instead of one that moves, because moving a
 pane resizes the window and a resize makes Claude Code repaint everything.
+
+## Run
+
+Reload tmux (`tmux source-file` on my config) and start `claude` in any pane:
+the hook reports the session to tower from its first event. `prefix a` opens
+the sidebar, `prefix t` the dashboard and `prefix i` the input bar; `tower`
+on its own opens the dashboard and `tower ls` lists the agents. After a
+rebuild, `tower respawn` restarts the docked panes on the new binary and
+`tower serve stop` stops the daemon, which starts again when needed.
 
 ## Keys
 
@@ -207,3 +229,7 @@ from `tower ls`, or any tmux target.
 
 Adding a column or a view means adding a field in `hook.go` (or reading it
 from the transcript in `transcript.go`), then drawing it in `internal/ui/view.go`.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
