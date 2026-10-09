@@ -187,12 +187,14 @@ func Respawn() {
 func Follow(target string) {
 	fresh := map[string]bool{}
 	for _, k := range kinds {
-		if k.on() {
+		// Ensure also returns a pane that was already there; only one it
+		// creates now must be spared the signal.
+		if k.on() && len(k.panes(target)) == 0 {
 			fresh[k.Ensure(target)] = true
 		}
 	}
-	agent.Load(true)
 	wake(target, fresh)
+	agent.Load(true)
 }
 
 // wake tells the docked panes that were already in target's window to
