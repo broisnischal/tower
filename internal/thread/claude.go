@@ -231,6 +231,15 @@ type claudeMsg struct {
 	Usage          *apiUsage       `json:"usage"`
 	ToolName       string          `json:"tool_name"`
 	DecisionReason string          `json:"decision_reason"`
+	RateLimit      *rateLimitInfo  `json:"rate_limit_info"`
+}
+
+// rateLimitInfo is the plan's usage as a rate_limit_event reports it.
+type rateLimitInfo struct {
+	Windows map[string]struct {
+		Utilization float64 `json:"utilization"` // 0 to 1
+		ResetsAt    int64   `json:"resetsAt"`
+	} `json:"unifiedWindows"`
 }
 
 type apiUsage struct {
@@ -271,6 +280,22 @@ func (c *claude) read(r io.Reader) {
 func (c *claude) handle(m claudeMsg) {
 	sub := m.Parent != nil && *m.Parent != "" // a subagent's traffic
 	switch m.Type {
+	case "rate_limit_event": // the account's usage limits, which every agent shares
+		if m.RateLimit != nil {
+			l := agent.Limits{Updated: time.Now().Unix(), Source: "headless"}
+			for name, w := range m.RateLimit.Windows {
+				win := &agent.Window{Used: w.Utilization * 100, ResetsAt: w.ResetsAt}
+				switch name {
+				case "five_hour":
+					l.FiveHour = win
+				case "seven_day":
+					l.SevenDay = win
+				}
+			}
+			if l.FiveHour != nil || l.SevenDay != nil {
+				agent.WriteLimits(l)
+			}
+		}
 	case "system":
 		switch m.Subtype {
 		case "init": // start of every turn

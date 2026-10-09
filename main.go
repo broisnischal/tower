@@ -52,7 +52,7 @@ const help = `tower: control plane for Claude Code agents in tmux
 send, wait, last, stop and kill also take a thread name, id, or t<index>.
 Flags go before positional arguments.
 
-plumbing: tower hook | serve [stop] | status | sidebar | input | toggle | focus | follow
+plumbing: tower hook | statusline | serve [stop] | status | sidebar | input | toggle | focus | follow
 `
 
 func main() {
@@ -73,6 +73,9 @@ func run(cmd string, args []string) error {
 		if s, ok := agent.Hook(os.Stdin); ok && s.RetryAt > 0 {
 			scheduleRetry(s)
 		}
+		return nil
+	case "statusline": // in my statusLine chain: records its figures, passes the JSON on
+		agent.StatusLine(os.Stdin, os.Stdout)
 		return nil
 	case "ui", "dashboard":
 		o := ui.Options{}
