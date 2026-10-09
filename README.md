@@ -16,11 +16,21 @@ itself. It gives me:
   whole timeline, and the status bar counts open tasks (`⇄ 2`)
 - a **dashboard** popup with the selected agent's live screen, activity log,
   git diff and last reply, plus send, approve, interrupt, spawn and close
+- a **status panel** along the bottom of the dashboard: who needs me and for
+  what (in red), what each agent is running and for how long, the selected
+  agent's context (with its share of the window), output and cost, and the
+  plan's 5-hour and 7-day usage with their reset times. Context share, cost
+  and usage come from Claude Code's status line (see Install) or a
+  headless thread's rate limit report; without either they show as missing
 - **state icons** on the window tabs and a **status-bar counter**
   (`◐ waiting on me`, `● working`, `✓ done`)
 - **agents talking to each other**: `@name` / `@all` in any message, forward one
   agent's last reply to others, and a CLI the agents use themselves to spawn a
-  helper in its own git worktree, message it, wait for it and read its answer
+  helper in its own git worktree, message it, wait for it and read its answer.
+  A participant without a pane, like a voice assistant, joins as a **peer**:
+  `tower peer add voice claudebot --say` makes `tower send voice ...` run that
+  command with the message, and it answers with `tower send --from voice`.
+  Tasks handed out with `tower ask` survive a daemon restart
 - an **input bar** along the bottom of every window that writes to the agent
   in it: several lines, history, voice typing through voxtype, pasted images,
   videos (sent as still frames) and dropped files
@@ -115,6 +125,14 @@ make hooks     # registers the hook in ~/.claude/settings.json (backup kept)
 make skill     # links skill/ to ~/.claude/skills/tower so agents know the CLI
 ```
 
+For the status panel's context share, cost and usage limits, put
+`tower statusline` in front of my status line command in
+`~/.claude/settings.json`. It passes the JSON on unchanged:
+
+```json
+"statusLine": {"type": "command", "command": "tower statusline | my-statusline"}
+```
+
 Then in `tmux.conf`:
 
 ```tmux
@@ -199,6 +217,8 @@ tower peek -n 20 tests
 
 tower ask api "add retries to the token refresh"  # from an agent: answer comes back to it
 tower comms                                # who handed what to whom
+tower peer add voice claudebot --say       # a participant without a pane
+tower send --from voice tests "how far?"   # sign a message as a peer
 tower new -e codex -w -n api "add retries to the token refresh"   # headless
 tower threads
 tower approve api allow
@@ -220,6 +240,10 @@ from `tower ls`, or any tmux target.
 | `internal/agent/transcript.go` | token usage, last reply, interrupt detection |
 | `internal/agent/control.go` | resolve, send, spawn, wait, worktrees |
 | `internal/agent/refine.go` | rewrites input bar messages into full prompts |
+| `internal/agent/stall.go` | interrupts and retries agents stuck waiting on the API |
+| `internal/agent/usage.go` | status line figures and plan usage limits |
+| `internal/agent/peers.go` | participants without a pane |
+| `internal/ui/status.go` | the status panel at the bottom of the dashboard |
 | `internal/sidebar` | docked panes per window (sidebar, input bar), shown and hidden together |
 | `internal/thread` | daemon, socket protocol, event model, Claude Code and Codex engines |
 | `internal/ui` | Bubble Tea: dashboard, sidebar, grid, chat, input bar, composer |
