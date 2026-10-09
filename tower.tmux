@@ -55,6 +55,9 @@ tmux set-hook -g 'client-session-changed[77]' "$follow"
 tmux set-hook -g 'after-new-window[77]' "$follow"
 # tmux shares every resize among all panes; put the docked ones back.
 tmux set-hook -g 'client-resized[77]' "run-shell -b \"'$bin' fit all\""
+# With aggressive-resize a window I come back to is resized only then, and
+# tmux hands the difference to the docked panes too.
+tmux set-hook -g 'window-resized[77]' "run-shell -b \"'$bin' fit '#{hook_window}'\""
 tmux set-hook -g 'pane-exited[77]' "run-shell -b \"'$bin' fit all\""
 
 tmux set -gq @tower_status "#($bin status)"

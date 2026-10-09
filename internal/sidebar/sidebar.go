@@ -149,6 +149,9 @@ func Fit(target string) {
 		}
 		return
 	}
+	if tmux.Run("display", "-p", "-t", target, "#{window_zoomed_flag}") == "1" {
+		return // resize-pane would unzoom it
+	}
 	for _, k := range kinds {
 		for _, p := range k.panes(target) {
 			if k.Name == "sidebar" {
