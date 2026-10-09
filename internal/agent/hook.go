@@ -163,7 +163,9 @@ func notify(pane, prev string, s State) {
 	}
 	who := tmux.Run("display", "-p", "-t", pane, "#{?@tower_name,#{@tower_name},#{window_name}} (#{session_name}:#{window_index})")
 	msg := Icon[s.Status] + " " + who + ": " + s.Activity
-	tmux.Run("display-message", "-d", "4000", strings.ReplaceAll(msg, "#", "##"))
+	// -C keeps panes drawing: without it tmux freezes the whole client
+	// (every pane and popup) until the message goes away.
+	tmux.Run("display-message", "-C", "-d", "4000", strings.ReplaceAll(msg, "#", "##"))
 }
 
 func visible(pane string) bool {
