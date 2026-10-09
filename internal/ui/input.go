@@ -34,6 +34,10 @@ type inputBar struct {
 	rseq     int    // a rewrite that comes back after I moved on is dropped
 	mine     string // my own words while the box holds a rewrite of them
 	asTyped  bool   // enter sends the box as it is, without a rewrite
+	rmodel   string // the model and start of the rewrite in flight, and
+	rstart   time.Time
+	rsend    bool // whether it sends once it is back
+	gframe   int  // frame of its generating effect
 }
 
 type sentMsg struct {
@@ -190,7 +194,7 @@ func (b *inputBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.seq != b.rseq || !b.refining {
 			return b, nil
 		}
-		b.refining, b.c.busy = false, ""
+		b.refining = false
 		if msg.err != nil {
 			b.asTyped = true
 			b.flash, b.flashAt = msg.err.Error()+" · enter sends it as typed", time.Now()
@@ -209,7 +213,16 @@ func (b *inputBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return b, b.send()
 		}
 		return b, nil
+	case genTickMsg:
+		if !b.refining || int(msg) != b.rseq {
+			return b, nil
+		}
+		b.gframe++
+		return b, genTick(b.rseq)
 	case tea.KeyMsg:
+		if b.refining && msg.String() != "ctrl+c" && msg.String() != "esc" {
+			return b, nil // the box is drawn as the effect: typing would go in unseen
+		}
 		switch msg.String() {
 		case "tab":
 			b.cycle(1)
@@ -228,7 +241,7 @@ func (b *inputBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return b, tea.Quit
 			}
 			b.c.Reset()
-			b.refining, b.c.busy, b.mine, b.asTyped = false, "", "", false
+			b.refining, b.mine, b.asTyped = false, "", false
 			return b, nil
 		case "ctrl+o":
 			if b.refining || b.c.Empty() {
@@ -280,15 +293,16 @@ func (b *inputBar) rewrite(send bool) tea.Cmd {
 	agents := append([]agent.Agent(nil), b.agents...)
 	b.rseq++
 	seq := b.rseq
-	b.refining, b.c.busy = true, "rewriting the prompt"
-	return func() tea.Msg {
+	model := tmux.Option("@tower_refine_model", "haiku")
+	b.refining, b.rmodel, b.rstart, b.rsend, b.gframe = true, model, time.Now(), send, 0
+	return tea.Batch(func() tea.Msg {
 		ctx := def
 		if to, _, err := agent.Route(src, nil, agents); err == nil && len(to) == 1 {
 			ctx = &to[0]
 		}
-		text, err := agent.Refine(src, ctx, tmux.Option("@tower_refine_model", "haiku"))
+		text, err := agent.Refine(src, ctx, model)
 		return refinedMsg{seq: seq, from: from, text: text, err: err, send: send}
-	}
+	}, genTick(seq))
 }
 
 func (b *inputBar) send() tea.Cmd {
@@ -341,6 +355,11 @@ func (b *inputBar) View() string {
 		label = dim.Render(" " + string(errNoTarget) + " ")
 	}
 	top := rule(b.w, label, dim.Render(" tab: next agent "))
+	if b.refining {
+		box := generatingBox(b.c.ta.Value(), b.w, max(1, b.h-2), b.gframe)
+		status := generatingStatus(b.gframe, b.rstart, b.rmodel, b.rsend)
+		return strings.Join([]string{top, box, fit(" "+status, b.w)}, "\n")
+	}
 	box := b.c.View(b.w, max(1, b.h-2))
 	status := b.c.Status()
 	if b.mine != "" {
