@@ -35,8 +35,11 @@ itself. It gives me:
 - **auto retry** when a turn dies on an API or network error: tower waits
   5s, 10s, 20s ... (doubling, up to 5 minutes, 8 tries) and says "continue";
   a usage limit waits until it resets; a login or billing error is shown to me
-  instead, since retrying cannot fix it. `set -g @tower_retry off` turns it
-  off; `@tower_retry_max` and `@tower_retry_message` change the count and text
+  instead, since retrying cannot fix it. When Claude Code sits in its own API
+  retry wait (`Retrying in 18s · attempt 4/10`) or gets no response, tower
+  presses Esc and retries 5s later: Enter if Esc put my prompt back in the
+  box, "continue" otherwise. `set -g @tower_retry off` turns both off;
+  `@tower_retry_max` and `@tower_retry_message` change the count and text
 - a **browser in tmux** (`tower browse <url>`): my installed Chrome runs
   headless and tower draws the page in a tmux window, passing clicks, typing
   and scrolling through; agents screenshot the page they build with

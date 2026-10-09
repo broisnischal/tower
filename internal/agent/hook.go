@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -72,7 +71,7 @@ func Hook(r io.Reader) (State, bool) {
 		s.Status, s.Activity = Idle, "ready"
 		line = "session " + or(ev.Source, "start")
 	case "UserPromptSubmit":
-		s.Status, s.Activity, s.TurnStarted, s.RetryAt = Working, "thinking", now, 0
+		s.Status, s.Activity, s.TurnStarted, s.RetryAt, s.Stalled = Working, "thinking", now, 0, false
 		s.Prompt = clip(ev.Prompt, 200)
 		line = "› " + s.Prompt
 	case "PreToolUse":
@@ -128,15 +127,13 @@ func Hook(r io.Reader) (State, bool) {
 // row, or when a usage limit resets. Errors a retry cannot fix (a login, a
 // billing problem) wait for me instead. It returns the log line.
 func failed(s *State, kind, text string, now time.Time) string {
+	s.Stalled = false
 	ok, until, reason := Retryable(kind, text, now)
 	if !ok || tmux.Option("@tower_retry", "on") == "off" {
 		s.Status, s.Activity, s.RetryAt = Waiting, "✗ "+reason, 0
 		return "✗ " + reason
 	}
-	limit := DefaultMaxRetries
-	if n, err := strconv.Atoi(tmux.Option("@tower_retry_max", "")); err == nil && n > 0 {
-		limit = n
-	}
+	limit := RetryLimit()
 	s.Retries++
 	if s.Retries > limit {
 		s.Status, s.RetryAt = Waiting, 0

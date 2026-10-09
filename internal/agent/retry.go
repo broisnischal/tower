@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"tower/internal/tmux"
 )
 
 // BackoffBase is the first wait; tests shorten it.
@@ -13,6 +15,14 @@ var BackoffBase = 5 * time.Second
 // DefaultMaxRetries is how many times tower says "continue" after a turn
 // dies on an API or network error, unless @tower_retry_max says otherwise.
 const DefaultMaxRetries = 8
+
+// RetryLimit is @tower_retry_max, or DefaultMaxRetries.
+func RetryLimit() int {
+	if n, err := strconv.Atoi(tmux.Option("@tower_retry_max", "")); err == nil && n > 0 {
+		return n
+	}
+	return DefaultMaxRetries
+}
 
 // Backoff is the wait before retry n (counting from 1): 5s, 10s, 20s, 40s
 // and so on, doubling up to five minutes.

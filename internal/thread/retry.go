@@ -3,7 +3,6 @@ package thread
 import (
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
 	"tower/internal/agent"
@@ -20,13 +19,6 @@ type RetryArgs struct {
 
 func retryMessage() string { return tmux.Option("@tower_retry_message", "continue") }
 
-func retryLimit() int {
-	if n, err := strconv.Atoi(tmux.Option("@tower_retry_max", "")); err == nil && n > 0 {
-		return n
-	}
-	return agent.DefaultMaxRetries
-}
-
 // scheduleRetry arms the timer for a tmux agent's retry, replacing any
 // earlier one for the same session.
 func (s *server) scheduleRetry(a RetryArgs) {
@@ -39,7 +31,9 @@ func (s *server) scheduleRetry(a RetryArgs) {
 }
 
 // fireRetry says "continue" to the agent, unless the session moved on
-// meanwhile: I typed something, it recovered, or it ended.
+// meanwhile: I typed something, it recovered, or it ended. After an API wait
+// tower interrupted before the first reply, Claude Code has put the prompt
+// back in the box, so it sends that again instead.
 func (s *server) fireRetry(a RetryArgs) {
 	st, err := agent.Read(a.Session)
 	if err != nil || st.RetryAt != a.At || st.Retries != a.Attempt || st.Pane != a.Pane {
@@ -48,6 +42,11 @@ func (s *server) fireRetry(a RetryArgs) {
 	for _, ag := range agent.Load(true) {
 		if ag.Pane != a.Pane || ag.SessionID != a.Session {
 			continue
+		}
+		if st.Stalled && agent.Draft(ag.Pane) != "" {
+			tmux.Run("send-keys", "-t", ag.Pane, "Enter")
+			agent.AppendLog(a.Session, time.Now().Unix(), fmt.Sprintf("↻ sent the prompt again (retry %d)", a.Attempt))
+			return
 		}
 		msg := retryMessage()
 		if err := agent.Send(ag, msg, false); err != nil {
@@ -76,7 +75,7 @@ func (s *server) retryThread(t *live, text string) {
 	if !ok || tmux.Option("@tower_retry", "on") == "off" {
 		return
 	}
-	limit := retryLimit()
+	limit := agent.RetryLimit()
 	var attempt int
 	s.update(t, func(th *Thread) { th.Retries++; attempt = th.Retries })
 	if attempt > limit {

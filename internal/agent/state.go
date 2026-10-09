@@ -46,6 +46,7 @@ type State struct {
 	Finished    int64  `json:"finished,omitempty"`
 	Retries     int    `json:"retries,omitempty"`  // API failures in a row
 	RetryAt     int64  `json:"retry_at,omitempty"` // when tower says "continue"; 0 when none is due
+	Stalled     bool   `json:"stalled,omitempty"`  // that retry follows an API wait tower interrupted
 }
 
 // Agent is a live session joined with the tmux pane it runs in.
@@ -182,7 +183,8 @@ var shells = map[string]bool{"zsh": true, "bash": true, "sh": true, "fish": true
 // With tidy set it also does the bookkeeping no hook can do: it deletes state
 // left by sessions that died without a SessionEnd, marks finished agents in a
 // window I am looking at as seen, notices interrupted turns (Claude Code fires
-// no Stop hook for Esc), and keeps each window's @tower_state icon in sync.
+// no Stop hook for Esc), interrupts and retries an agent stuck waiting on the
+// API, and keeps each window's @tower_state icon in sync.
 func Load(tidy bool) []Agent {
 	ps := tmux.Panes()
 	if len(ps) == 0 {
@@ -224,10 +226,15 @@ func Load(tidy bool) []Agent {
 			case s.Status == Done && p.Visible():
 				s.Status = Idle
 				Write(s)
-			case s.Status == Working && now-s.Updated > 5 && interrupted(s.Transcript):
+			case s.Status == Working && s.RetryAt == 0 && now-s.Updated > 5 && interrupted(s.Transcript):
 				s.Status, s.Activity = Idle, "interrupted"
 				Write(s)
 				AppendLog(s.SessionID, now, "✗ interrupted")
+			case s.Status == Working && s.Activity == "thinking" && s.RetryAt == 0 && now-s.Updated > stallQuiet &&
+				tmux.Option("@tower_retry", "on") != "off":
+				if line, ok := stalled(s); ok {
+					s, _ = retryStall(s, line, now)
+				}
 			}
 		}
 		agents = append(agents, Agent{State: s, Win: p})

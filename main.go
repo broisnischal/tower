@@ -56,6 +56,7 @@ plumbing: tower hook | serve [stop] | status | sidebar | input | toggle | focus 
 `
 
 func main() {
+	agent.OnRetry = scheduleRetry
 	cmd, args := "ui", os.Args[1:]
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
