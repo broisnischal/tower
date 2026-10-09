@@ -104,7 +104,11 @@ func branches(args []string) error {
 		}
 		if r.Remote != "" {
 			if r.Fetched > 0 {
-				info = append(info, "last fetch "+branch.Age(r.Fetched, now)+" ago")
+				ago := branch.Age(r.Fetched, now) + " ago"
+				if ago == "now ago" {
+					ago = "just now"
+				}
+				info = append(info, "last fetch "+ago)
 			} else {
 				info = append(info, "never fetched")
 			}
