@@ -27,11 +27,11 @@ itself. It gives me:
 - **prompt rewriting** in the input bar: a quick Claude run (Haiku by
   default) turns what I typed or dictated into a clear, complete prompt for
   the agent, using its current task and last reply to work out what "it" and
-  "that" mean. Enter puts the rewrite in the box and enter again sends it;
-  `ctrl+z` brings back my own words, `ctrl+o` rewrites on demand. Short
-  replies, slash commands and `!` commands go as typed.
-  `set -g @tower_refine auto` sends the rewrite straight away, `off` turns it
-  off, and `@tower_refine_model` picks the model
+  "that" mean. Enter rewrites the message and sends the rewrite; `ctrl+o`
+  rewrites it into the box without sending, and `ctrl+z` brings back my own
+  words. Short replies, slash commands and `!` commands go as typed.
+  `set -g @tower_refine review` makes enter show the rewrite first and enter
+  again send it, `off` turns it off, and `@tower_refine_model` picks the model
 - **auto retry** when a turn dies on an API or network error: tower waits
   5s, 10s, 20s ... (doubling, up to 5 minutes, 8 tries) and says "continue";
   a usage limit waits until it resets; a login or billing error is shown to me

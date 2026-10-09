@@ -257,14 +257,14 @@ func (b *inputBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return b, cmd
 }
 
-// refineMode is @tower_refine: review (enter rewrites the message into the
-// box, enter again sends it), auto (enter rewrites and sends) or off.
+// refineMode is @tower_refine: auto (enter rewrites and sends), review
+// (enter rewrites the message into the box, enter again sends it) or off.
 func refineMode() string {
-	switch m := tmux.Option("@tower_refine", "review"); m {
-	case "auto", "off":
+	switch m := tmux.Option("@tower_refine", "auto"); m {
+	case "review", "off":
 		return m
 	}
-	return "review"
+	return "auto"
 }
 
 // rewrite turns the message into a fuller prompt for the agent it goes to.
