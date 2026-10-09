@@ -90,6 +90,7 @@ type model struct {
 	sidebar bool
 	self    string
 	w, h    int
+	touched time.Time // when the wheel last moved the selection; poll leaves it a moment
 
 	agents   []agent.Agent
 	sessions []tmux.Session
@@ -297,7 +298,7 @@ func (m *model) poll() tea.Cmd {
 		}
 		// Unless I am driving it, the sidebar points at the agent in the
 		// window I am working in.
-		if !w.focused && w.local != "" {
+		if !w.focused && w.local != "" && time.Since(m.touched) > 3*time.Second {
 			m.selKey = "a" + w.local
 		}
 	}
@@ -862,12 +863,14 @@ func (m *model) onMouse(e tea.MouseMsg) tea.Cmd {
 			m.scroll(-3)
 			return nil
 		}
+		m.touched = time.Now() // the wheel moves the selection without focusing the sidebar
 		return m.move(-1)
 	case e.Button == tea.MouseButtonWheelDown:
 		if inDetail {
 			m.scroll(3)
 			return nil
 		}
+		m.touched = time.Now()
 		return m.move(1)
 	case e.Button == tea.MouseButtonLeft && e.Action == tea.MouseActionPress:
 		i, ok := m.rows[e.Y]
