@@ -110,6 +110,9 @@ type model struct {
 	feeds     map[string]*liveFeed    // by transcript path
 	comms     []agent.Message         // recent hand-offs between agents
 	links     map[string]string       // pane -> open task it gives or works on
+	live      map[string]agent.Live   // by session id: what each status line reported
+	limits    agent.Limits            // the plan's usage limits, shared by every agent
+	hasLimits bool
 	showComms bool
 
 	view     view
@@ -367,6 +370,7 @@ func (m *model) refresh() {
 	m.sessions = tmux.Sessions()
 	m.rebuild()
 	m.capture()
+	m.loadStatus()
 }
 
 // rebuild lays out the rows: headless threads first, then each tmux session

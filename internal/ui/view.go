@@ -107,7 +107,11 @@ func (m *model) wide() string {
 	lw := clamp(m.w/3, 34, 46)
 	head := m.header(m.w)
 	foot := m.footer(m.w)
-	bodyH := max(0, m.h-len(head)-len(foot))
+	var panel []string
+	if m.h >= 20 { // too short and the chat would have no room
+		panel = m.statusPanel(m.w)
+	}
+	bodyH := max(0, m.h-len(head)-len(panel)-len(foot))
 	m.listW = lw
 	left := m.list(lw, bodyH, len(head))
 	right := m.detailPanel(m.w-lw-3, bodyH)
@@ -119,6 +123,7 @@ func (m *model) wide() string {
 	for i := range bodyH {
 		lines = append(lines, left[i]+sep+right[i])
 	}
+	lines = append(lines, panel...)
 	lines = append(lines, foot...)
 	return strings.Join(lines, "\n")
 }
