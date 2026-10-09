@@ -101,6 +101,7 @@ func Serve() error {
 		s.add(t)
 	}
 	s.resumeRetries()
+	s.resumeRelays()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	go func() { <-sig; s.shutdown() }()
