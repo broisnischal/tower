@@ -937,9 +937,21 @@ func (m *model) jump(it item) tea.Cmd {
 		return nil
 	}
 	if m.sidebar {
+		m.leave()
 		return nil
 	}
 	return tea.Quit // the dashboard is a popup: get out of the way
+}
+
+// leave hands my window's focus back to its working pane once a jump from
+// the sidebar has taken me to another window. Left focused, the sidebar is
+// where the cursor lands when I come back, and it keeps the row I picked
+// instead of following the window. A jump inside my own window has already
+// moved the focus, so this does nothing then.
+func (m *model) leave() {
+	if w := where(m.self); w.focused && w.local != "" {
+		tmux.Run("select-pane", "-t", w.local)
+	}
 }
 
 // popup opens another tower command in a tmux popup without waiting for it.
