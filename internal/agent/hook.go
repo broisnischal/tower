@@ -42,7 +42,7 @@ func Hook(r io.Reader) (State, bool) {
 	}
 	// Subagents share the parent's session id. Only their tool calls are
 	// worth showing; their Stop would end the parent's turn early.
-	if ev.AgentID != "" && ev.Event != "PreToolUse" && ev.Event != "PostToolUse" {
+	if ev.AgentID != "" && ev.Event != "PreToolUse" && ev.Event != "PostToolUse" && ev.Event != "PermissionRequest" {
 		return State{}, false
 	}
 	if ev.Event == "SessionEnd" {
@@ -85,11 +85,16 @@ func Hook(r io.Reader) (State, bool) {
 			s.Activity = "thinking"
 		}
 		s.Status = Working
+	case "PermissionRequest": // the dialog is up: say exactly what it asks
+		s.Status, s.Activity = Waiting, "permission: "+toolLabel(ev.Tool, ev.Input)
+		line = "! " + s.Activity
 	case "Notification":
 		switch {
 		case ev.NotificationType == "idle_prompt", ev.NotificationType == "auth_success",
 			strings.Contains(ev.Message, "waiting for your input"):
 			return State{}, false
+		case s.Status == Waiting && strings.HasPrefix(s.Activity, "permission: "):
+			return State{}, false // PermissionRequest already said what, and sooner
 		}
 		s.Status, s.Activity = Waiting, clip(ev.Message, 120)
 		line = "! " + s.Activity

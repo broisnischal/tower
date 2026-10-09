@@ -11,7 +11,7 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 jq --arg cmd "\"$bin\" hook" '
   reduce ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "StopFailure",
-          "Notification", "PreCompact", "Stop", "SessionEnd") as $e (.;
+          "Notification", "PermissionRequest", "PreCompact", "Stop", "SessionEnd") as $e (.;
     if any(.hooks[$e][]?.hooks[]?; .command == $cmd) then .
     else .hooks[$e] += [{matcher: "*", hooks: [{type: "command", command: $cmd, timeout: 5}]}]
     end)
