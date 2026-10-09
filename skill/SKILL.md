@@ -26,6 +26,7 @@ the row marked `(you)` is this session.
 | Close a helper I started | `tower kill NAME` |
 | Start a helper with no terminal window | `tower new -e claude\|codex -n NAME --wait "TASK"` |
 | See who takes part without a pane (a voice assistant, say) | `tower peer`; message one with `tower send NAME "..."` |
+| See every branch: its worktree, who works there, vs main, pushed or not, uncommitted | `tower branches` (`--fetch` to check the remote first, `--json`) |
 
 `tower new` starts a headless thread: tower runs Claude Code or Codex itself.
 Its permission prompts go to me in tower, so with `--wait` it can stop at

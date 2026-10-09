@@ -16,6 +16,11 @@ itself. It gives me:
   whole timeline, and the status bar counts open tasks (`⇄ 2`)
 - a **dashboard** popup with the selected agent's live screen, activity log,
   git diff and last reply, plus send, approve, interrupt, spawn and close
+- a **branches** view (the dashboard's last tab, or `tower branches` for
+  every repo my agents work in): each branch with its worktree, the agent
+  working there, how far it is from the base branch, whether it is pushed,
+  and what is uncommitted. The remote side is as of the last fetch or push;
+  `tower branches --fetch` fetches first
 - a **status panel** along the bottom of the dashboard: who needs me and for
   what (in red), what each agent is running and for how long, the selected
   agent's context (with its share of the window), output and cost, and the
@@ -197,7 +202,7 @@ rebuild, `tower respawn` restarts the docked panes on the new binary and
 | `i` | headless thread: type to it (`esc` back to the list) |
 | `y` / `A` / `d` | headless thread: allow / allow for the session / deny |
 | `r` | rename |
-| `tab` | dashboard view: live, screen, diff, log |
+| `tab` | dashboard view: live, screen, diff, log, branches |
 | `pgup` `pgdn` | scroll the view |
 | `l` / `c` | sidebar log panel / compact rows |
 | `o` | sidebar: open the dashboard |
@@ -214,6 +219,7 @@ tower spawn -n scout --wait "list every caller of refreshToken with file:line"
 tower send --wait tests "status? paste the failing assertion"
 tower wait tests && tower last tests
 tower peek -n 20 tests
+tower branches                             # every branch of my agents' repos: worktree, agent, pushed, uncommitted
 
 tower ask api "add retries to the token refresh"  # from an agent: answer comes back to it
 tower comms                                # who handed what to whom
