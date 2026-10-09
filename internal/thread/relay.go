@@ -9,17 +9,19 @@ import (
 	"tower/internal/agent"
 )
 
-// RelayArgs assigns a task from one tmux agent to another. From may be
-// empty for a task I assign myself; then the reply only goes to the log.
+// RelayArgs assigns a task to a tmux agent. From is the asking agent's pane,
+// or FromPeer a peer's name; with neither, the task is mine and the reply
+// only goes to the log.
 type RelayArgs struct {
-	From string `json:"from"` // pane id
-	To   string `json:"to"`   // pane id
-	Text string `json:"text"`
+	From     string `json:"from"` // pane id
+	FromPeer string `json:"from_peer,omitempty"`
+	To       string `json:"to"` // pane id
+	Text     string `json:"text"`
 }
 
-// relay delivers a task, waits for the other agent to finish it, and pastes
-// its answer back into the agent that asked. It runs in the daemon so neither
-// agent has to block.
+// relay delivers a task, waits for the other agent to finish it, and hands
+// its answer back to whoever asked. It runs in the daemon so neither side
+// has to block, and resumeRelays picks it up again after a restart.
 func (s *server) relay(a RelayArgs) error {
 	agents := agent.Load(true)
 	var from, to *agent.Agent
@@ -35,34 +37,61 @@ func (s *server) relay(a RelayArgs) error {
 		return errors.New("no agent in pane " + a.To)
 	}
 	fromName := "me"
-	if from != nil {
+	switch {
+	case from != nil:
 		fromName = from.Name
+	case a.FromPeer != "":
+		fromName = a.FromPeer
 	}
 	note := "when you finish, your final answer goes back to it automatically"
-	if from == nil {
+	if fromName == "me" {
 		note = "I asked through tower"
 	}
 	since := time.Now().Unix()
 	if err := agent.Send(*to, fmt.Sprintf("[task from %s via tower; %s]\n%s", quoteName(fromName), note, a.Text), false); err != nil {
 		return err
 	}
-	id := agent.LogMessage(agent.Message{Kind: "task", From: fromName, To: to.Name, FromPane: a.From, ToPane: to.Pane, Text: a.Text})
-	go func() {
-		done, err := agent.WaitDone(to.Pane, since, 6*time.Hour)
-		reply := agent.FinalReply(done.Transcript)
-		if err != nil {
-			reply = err.Error()
-		}
-		agent.LogMessage(agent.Message{Kind: "reply", From: to.Name, To: fromName, FromPane: to.Pane, ToPane: a.From, Text: reply, Re: id, Failed: err != nil})
-		if from == nil {
-			return
-		}
-		msg := fmt.Sprintf("[reply from agent %q to the task you gave it]\n%s", to.Name, reply)
-		if err := agent.Deliver(a.From, msg); err != nil {
-			log.Printf("relay %s: %v", id, err)
-		}
-	}()
+	m := agent.Message{Kind: "task", From: fromName, To: to.Name, FromPane: a.From, ToPane: to.Pane, Text: a.Text,
+		FromPeer: a.FromPeer != "", Via: "relay"}
+	m.ID = agent.LogMessage(m)
+	m.Time = since
+	go s.answer(m)
 	return nil
+}
+
+// answer waits for the agent working on task m to finish, logs its reply,
+// and delivers it to the asker.
+func (s *server) answer(m agent.Message) {
+	done, err := agent.WaitDone(m.ToPane, m.Time, max(time.Minute, 6*time.Hour-time.Since(time.Unix(m.Time, 0))))
+	reply := agent.FinalReply(done.Transcript)
+	if err != nil {
+		reply = err.Error()
+	}
+	agent.LogMessage(agent.Message{Kind: "reply", From: m.To, To: m.From, FromPane: m.ToPane, ToPane: m.FromPane, Text: reply, Re: m.ID, Failed: err != nil})
+	msg := fmt.Sprintf("[reply from agent %q to the task you gave it]\n%s", m.To, reply)
+	switch {
+	case m.FromPeer:
+		if p, ok := agent.FindPeer(m.From); ok {
+			err = p.Send(msg)
+		}
+	case m.FromPane != "":
+		err = agent.Deliver(m.FromPane, msg)
+	default:
+		return
+	}
+	if err != nil {
+		log.Printf("relay %s: %v", m.ID, err)
+	}
+}
+
+// resumeRelays waits again on the tasks the daemon was relaying when it last
+// stopped, so a restart (after a rebuild, say) doesn't lose their replies.
+func (s *server) resumeRelays() {
+	for _, m := range agent.OpenTasks(agent.Messages(500)) {
+		if m.Via == "relay" {
+			go s.answer(m)
+		}
+	}
 }
 
 func quoteName(n string) string {

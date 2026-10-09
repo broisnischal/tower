@@ -39,6 +39,8 @@ const help = `tower: control plane for Claude Code agents in tmux
   tower send [--wait] [--force] [-t secs] <agent> <message | ->
   tower ask [--from a] <agent> <task>  assign a task; the answer comes back to the asker
   tower comms [-n 30]            who handed what to whom
+  tower peer [add <name> <command...> | rm <name>]   participants without a pane, e.g. a voice
+                                 assistant: tower send <name> runs the command with the message
   tower wait [-t secs] <agent>   block until the agent stops working
   tower last <agent>             print the agent's last reply
   tower peek [-n lines] <agent>  print the agent's screen
@@ -74,6 +76,8 @@ func run(cmd string, args []string) error {
 			scheduleRetry(s)
 		}
 		return nil
+	case "peer":
+		return peer(args)
 	case "statusline": // in my statusLine chain: records its figures, passes the JSON on
 		agent.StatusLine(os.Stdin, os.Stdout)
 		return nil
@@ -298,12 +302,13 @@ func send(args []string) error {
 	fs := flag.NewFlagSet("tower send", flag.ContinueOnError)
 	waitFor := fs.Bool("wait", false, "wait for the reply and print it")
 	force := fs.Bool("force", false, "send even if the agent is on a permission prompt")
+	from := fs.String("from", "", "sign the message as this agent or peer (default: the calling agent)")
 	timeout := fs.Int("t", 0, "with --wait, give up after this many seconds")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() < 2 {
-		return errors.New("usage: tower send [--wait] <agent> <message | ->")
+		return errors.New("usage: tower send [--wait] [--from name] <agent|peer> <message | ->")
 	}
 	msg := strings.Join(fs.Args()[1:], " ")
 	if msg == "-" {
@@ -315,21 +320,41 @@ func send(args []string) error {
 	}
 	msg = strings.TrimSpace(msg)
 	agents := agent.Load(true)
-	a, err := agent.Resolve(fs.Arg(0), agents)
-	if err != nil {
-		return threadAct("send", fs.Arg(0), msg, *waitFor, *timeout)
-	}
-	body, fromName, fromPane := msg, "me", ""
-	if me, ok := agent.Self(agents); ok {
-		fromName, fromPane = me.Name, me.Pane
-		if me.Pane == a.Pane {
-			return errors.New("that agent is the caller")
+	body, fromName, fromPane, fromPeer := msg, "me", "", false
+	switch me, ok := agent.Self(agents); {
+	case *from != "":
+		fromName = *from
+		if p, isPeer := agent.FindPeer(*from); isPeer {
+			fromName, fromPeer = p.Name, true
+		} else if f, err := agent.Resolve(*from, agents); err == nil {
+			fromName, fromPane = f.Name, f.Pane
 		}
-		hint := fmt.Sprintf("reply with: tower send %s \"...\"", me.Name)
+	case ok:
+		fromName, fromPane = me.Name, me.Pane
+	}
+	if fromName != "me" {
+		hint := fmt.Sprintf("reply with: tower send %s \"...\"", fromName)
 		if *waitFor {
 			hint = "your final answer goes back to it automatically"
 		}
-		msg = fmt.Sprintf("[message from agent %q; %s]\n%s", me.Name, hint, msg)
+		msg = fmt.Sprintf("[message from agent %q; %s]\n%s", fromName, hint, msg)
+	}
+	a, err := agent.Resolve(fs.Arg(0), agents)
+	if err != nil {
+		if p, ok := agent.FindPeer(fs.Arg(0)); ok {
+			if *waitFor {
+				return fmt.Errorf("%s is a peer: it answers with its own tower send, so --wait has nothing to wait on", p.Name)
+			}
+			if err := p.Send(msg); err != nil {
+				return err
+			}
+			agent.LogMessage(agent.Message{Kind: "message", From: fromName, To: p.Name, FromPane: fromPane, FromPeer: fromPeer, Text: body})
+			return nil
+		}
+		return threadAct("send", fs.Arg(0), body, *waitFor, *timeout)
+	}
+	if fromPane == a.Pane {
+		return errors.New("that agent is the caller")
 	}
 	since := time.Now().Unix()
 	if err := agent.Send(a, msg, *force); err != nil {
@@ -339,7 +364,7 @@ func send(args []string) error {
 	if *waitFor {
 		kind = "task"
 	}
-	id := agent.LogMessage(agent.Message{Kind: kind, From: fromName, To: a.Name, FromPane: fromPane, ToPane: a.Pane, Text: body})
+	id := agent.LogMessage(agent.Message{Kind: kind, From: fromName, To: a.Name, FromPane: fromPane, ToPane: a.Pane, Text: body, FromPeer: fromPeer})
 	if !*waitFor {
 		return nil
 	}

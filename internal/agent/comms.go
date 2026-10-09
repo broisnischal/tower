@@ -24,6 +24,8 @@ type Message struct {
 	Text     string `json:"text"`
 	Re       string `json:"re,omitempty"` // the task a reply answers
 	Failed   bool   `json:"failed,omitempty"`
+	FromPeer bool   `json:"from_peer,omitempty"` // From is a peer, not a pane
+	Via      string `json:"via,omitempty"`       // relay: the daemon owes the asker the reply
 }
 
 func commsPath() string { return filepath.Join(Dir(), "comms.jsonl") }
